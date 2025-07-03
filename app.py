@@ -1,3 +1,4 @@
+# app.py (Flask backend remains the same as previous version)
 from flask import Flask, render_template, request, jsonify
 import requests
 import json
@@ -34,6 +35,8 @@ def index():
 
 @app.route('/get_buses')
 def get_buses():
+    print("Starting data fetch from API...")
+    start_time = time.time()
     results = {}
     
     for line in range(1, 101):
@@ -79,23 +82,17 @@ def get_buses():
             vehicle_data = {
                 "vehicle_id": mvj['VehicleRef'],
                 "destination": mvj['DestinationName'],
-                "origin": mvj.get('OriginRef', ''),
-                "direction": mvj.get('DirectionRef', ''),
                 "location": {
                     "latitude": mvj['VehicleLocation']['Latitude'],
                     "longitude": mvj['VehicleLocation']['Longitude'],
-                    "bearing": mvj.get('Bearing', 0)
                 },
                 "status": {
                     "monitored": mvj.get('Monitored', False),
-                    "progress_rate": mvj.get('ProgressRate', ''),
                     "deviation": call.get("Extensions", {}).get("Deviation", "0")
                 },
                 "call": {
                     "stop_name": call.get("StopPointName", ""),
                     "presentable_distance": extensions.get("PresentableDistance", ""),
-                    "distance_from_call": extensions.get("DistanceFromCall", 0),
-                    "stops_from_call": extensions.get("StopsFromCall", 0),
                     "arrival_time": arrival_time
                 },
                 "recorded_time": v.get('RecordedAtTime', '')
@@ -104,7 +101,11 @@ def get_buses():
         
         formatted_results.append(line_data)
     
-    return jsonify(formatted_results)
+    print(f"Data fetch completed in {time.time() - start_time:.2f} seconds")
+    return jsonify({
+        "data": formatted_results,
+        "timestamp": datetime.now().isoformat()
+    })
 
 if __name__ == '__main__':
     app.run(debug=True)
