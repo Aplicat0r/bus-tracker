@@ -1,0 +1,197 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TASRUD Bus Tracker</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <style>
+        .bus-card {
+            margin-bottom: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .bus-header {
+            border-top-left-radius: 8px !important;
+            border-top-right-radius: 8px !important;
+            padding: 0.5rem 1rem;
+        }
+        .vehicle-item {
+            border-bottom: 1px solid #eee;
+            padding: 0.5rem 0;
+        }
+        .vehicle-item:last-child {
+            border-bottom: none;
+        }
+        .compact-text {
+            font-size: 0.85rem;
+        }
+        .status-badge {
+            font-size: 0.75rem;
+        }
+        .loading {
+            display: none;
+        }
+        .last-updated {
+            font-size: 0.75rem;
+        }
+        .map-icon {
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-3">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4 class="mb-0">TASRUD Bus Tracker</h4>
+            <div class="d-flex align-items-center">
+                <span id="lastUpdated" class="text-muted last-updated me-2">Never updated</span>
+                <button id="refreshBtn" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
+            </div>
+        </div>
+        
+        <div id="loading" class="loading mb-2">
+            <div class="spinner-border spinner-border-sm text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <span class="ms-2">Loading data...</span>
+        </div>
+        
+        <div id="busContainer">
+            <!-- Bus cards will be inserted here -->
+        </div>
+        
+        <div id="noBuses" class="text-center text-muted py-3" style="display: none;">
+            No active buses found.
+        </div>
+    </div>
+
+    <script>
+        // Global variable to store refresh interval
+        let refreshInterval;
+        const REFRESH_INTERVAL_MS = 30000; // 30 seconds
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log("Initializing TASRUD Bus Tracker...");
+            fetchBusData();
+            setupAutoRefresh();
+            
+            document.getElementById('refreshBtn').addEventListener('click', function() {
+                console.log("Manual refresh triggered");
+                fetchBusData();
+            });
+        });
+        
+        function setupAutoRefresh() {
+            // Clear any existing interval
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+            }
+            
+            // Set up new interval
+            refreshInterval = setInterval(() => {
+                console.log("Auto-refresh triggered");
+                fetchBusData();
+            }, REFRESH_INTERVAL_MS);
+            
+            console.log(`Auto-refresh set up to run every ${REFRESH_INTERVAL_MS/1000} seconds`);
+        }
+        
+        function fetchBusData() {
+            const busContainer = document.getElementById('busContainer');
+            const loading = document.getElementById('loading');
+            const noBuses = document.getElementById('noBuses');
+            const lastUpdated = document.getElementById('lastUpdated');
+            
+            // Show loading indicator
+            loading.style.display = 'flex';
+            console.log("Fetching bus data from server...");
+            
+            fetch('/get_buses')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log("Data received from server:", data);
+                    loading.style.display = 'none';
+                    lastUpdated.textContent = `Updated: ${new Date().toLocaleTimeString()}`;
+                    
+                    if (!data.data || data.data.length === 0) {
+                        noBuses.style.display = 'block';
+                        busContainer.innerHTML = '';
+                        console.log("No active buses found in response");
+                        return;
+                    }
+                    
+                    noBuses.style.display = 'none';
+                    
+                    // Sort by line number
+                    data.data.sort((a, b) => parseInt(a.line) - parseInt(b.line));
+                    
+                    let html = '';
+                    
+                    data.data.forEach(line => {
+                        html += `
+                            <div class="card bus-card mb-3">
+                                <div class="card-header bg-primary text-white bus-header d-flex justify-content-between align-items-center">
+                                    <span class="fw-bold">Line ${line.line}</span>
+                                    <span class="badge bg-light text-dark">
+                                        ${line.vehicles.length} ${line.vehicles.length === 1 ? 'bus' : 'buses'}
+                                    </span>
+                                </div>
+                                <div class="card-body p-2">
+                                    ${line.vehicles.map(vehicle => `
+                                        <div class="vehicle-item d-flex justify-content-between align-items-center">
+                                            <div class="d-flex flex-column">
+                                                <span class="fw-bold">${vehicle.vehicle_id}</span>
+                                                <span class="compact-text text-muted">${vehicle.destination}</span>
+                                            </div>
+                                            <div class="d-flex align-items-center">
+                                                ${vehicle.call.arrival_time ? `
+                                                <span class="badge bg-info text-dark me-2 status-badge">
+                                                    ${vehicle.call.arrival_time}
+                                                </span>
+                                                ` : ''}
+                                                <span class="badge ${vehicle.status.monitored ? 'bg-success' : 'bg-warning text-dark'} status-badge me-2">
+                                                    ${vehicle.status.deviation !== "0" ? vehicle.status.deviation+'m' : 'On time'}
+                                                </span>
+                                                <i class="bi bi-map map-icon text-primary" 
+                                                   title="View on map"
+                                                   onclick="window.open('https://www.google.com/maps?q=${vehicle.location.latitude},${vehicle.location.longitude}', '_blank')">
+                                                </i>
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        `;
+                    });
+                    
+                    busContainer.innerHTML = html;
+                    console.log("UI updated with new data");
+                })
+                .catch(error => {
+                    console.error("Error fetching bus data:", error);
+                    loading.style.display = 'none';
+                    noBuses.style.display = 'block';
+                    noBuses.innerHTML = `
+                        <div class="alert alert-danger py-2">
+                            <i class="bi bi-exclamation-triangle-fill"></i> Error loading data. Retrying...
+                        </div>
+                    `;
+                    
+                    // Auto-retry after 5 seconds if there's an error
+                    setTimeout(fetchBusData, 5000);
+                });
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
